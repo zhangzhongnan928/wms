@@ -1,0 +1,5 @@
+fastapi[testclient]
+uvicorn
+httpx
+pytest
+mcp[cli]
