@@ -60,13 +60,18 @@ Add the server to your Claude configuration file. Example for HTTP transport:
 {
   "mcpServers": {
     "warpcast": {
-      "url": "http://localhost:8000/mcp",
+      "command": "python",
+      "args": [
+        "-m",
+        "warpcast_server"
+      ],
       "env": {
         "WARPCAST_API_TOKEN": "YOUR_API_TOKEN"
       }
     }
   }
 }
+
 ```
 
 Restart Claude Desktop and the Warpcast tools will be available.
