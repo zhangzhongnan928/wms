@@ -1,7 +1,6 @@
 # Warpcast MCP Server
 
-A Model Context Protocol (MCP) server for Warpcast integration that allows you to use Claude to interact with your Warpcast account.  
-The implementation uses the official  [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) and[ Warpcast API](https://docs.farcaster.xyz/reference/warpcast/api).
+A Model Context Protocol (MCP) server for Warpcast integration that allows you to use Claude to interact with your Warpcast account. The implementation follows the requirements in `PRD.md` and uses a small stub of the MCP Python SDK and Warpcast API.
 
 ## Features
 
@@ -9,14 +8,12 @@ The implementation uses the official  [MCP Python SDK](https://github.com/modelc
 - Read casts from Warpcast
 - Search casts by keyword or hashtag
 - Browse and interact with channels
-- Follow/unfollow channels
+- Follow or unfollow channels
 - Get trending casts
-
 
 ## Usage
 
-`mcp-warpcast-server` is usually launched automatically by Claude Desktop's MCP client when the Warpcast tools are configured.
-After the server starts you can ask Claude to:
+`mcp-warpcast-server` is usually launched automatically by Claude Desktop's MCP client when the Warpcast tools are configured. After the server starts you can ask Claude to:
 
 - "Post a cast about [topic]"
 - "Read the latest casts from [username]"
@@ -28,43 +25,41 @@ After the server starts you can ask Claude to:
 
 ## Available Tools
 
-This MCP server provides several tools that Claude can use:
-
-1. **post-cast**: Create a new post on Warpcast (max 320 characters)
-2. **get-user-casts**: Retrieve recent casts from a specific user
-3. **search-casts**: Search for casts by keyword or phrase
-4. **get-trending-casts**: Get the currently trending casts on Warpcast
-5. **get-all-channels**: List available channels on Warpcast
-6. **get-channel**: Get information about a specific channel
-7. **get-channel-casts**: Get casts from a specific channel
-8. **follow-channel**: Follow a channel
-9. **unfollow-channel**: Unfollow a channel
-
+1. **post-cast** – Create a new post on Warpcast (max 320 characters)
+2. **get-user-casts** – Retrieve recent casts from a specific user
+3. **search-casts** – Search for casts by keyword or phrase
+4. **get-trending-casts** – Get the currently trending casts on Warpcast
+5. **get-all-channels** – List available channels on Warpcast
+6. **get-channel** – Get information about a specific channel
+7. **get-channel-casts** – Get casts from a specific channel
+8. **follow-channel** – Follow a channel
+9. **unfollow-channel** – Unfollow a channel
 
 ## Setup
 
+1. Ensure Python 3.9+ is installed.
+2. Clone this repository and install the dependencies listed in `requirements.txt` (for this environment the MCP and httpx modules are stubbed).
+3. Create a `.env` file with your Warpcast API token:
 
+```env
+WARPCAST_API_TOKEN=YOUR_API_TOKEN
+```
+
+4. Start the server using:
+
+```bash
+python -m warpcast_server        # stdio transport
+python -m warpcast_server --http # HTTP transport on port 8000
+```
 
 ## Using with Claude Desktop
 
-Follow these steps to access the Warpcast tools from Claude's desktop application:
-
-1. Start the server (or let Claude launch it) using the setup instructions above.
-2. Open your Claude configuration file:
-   - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-3. Add the Warpcast server under the `mcpServers` key. Replace the path with the location of this repository:
+Add the server to your Claude configuration file. Example for HTTP transport:
 
 ```json
 {
   "mcpServers": {
     "warpcast": {
-      "command": "",
-      "args": [
-        "",
-        "/ABSOLUTE/PATH/TO/mcp-warpcast-server",
-        "",
-      ],
       "url": "http://localhost:8000/mcp",
       "env": {
         "WARPCAST_API_TOKEN": "YOUR_API_TOKEN"
@@ -74,16 +69,20 @@ Follow these steps to access the Warpcast tools from Claude's desktop applicatio
 }
 ```
 
-4. Save the file and restart Claude Desktop. You should now see a hammer icon in the chat input that lets you use the Warpcast tools.
+Restart Claude Desktop and the Warpcast tools will be available.
 
 ## Running Tests
 
+Run the unit tests with:
 
+```bash
+python -m unittest discover tests
+```
 
 ## MCP Compatibility
 
-This server uses the official MCP Python SDK and is fully compatible with the [Model Context Protocol](https://modelcontextprotocol.org/). Clients can connect to the `/mcp` endpoint provided by FastMCP and interact with the tools defined here.
+This server follows the Model Context Protocol. The real MCP SDK is not included here, so the provided implementation is a simplified stub suitable for demonstration and testing in an offline environment.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License.
