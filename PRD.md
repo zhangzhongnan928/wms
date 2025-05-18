@@ -1,368 +1,195 @@
 
-Warpcast MCP Server - Product Requirements Document
-1. Overview
-1.1 Purpose
-The Warpcast MCP Server is designed to enable AI assistants, specifically Claude, to interact with the Warpcast social platform through the Model Context Protocol (MCP). This server will act as a bridge between Claude and the Warpcast API, allowing users to perform various Warpcast operations through natural language conversations.
-1.2 Project Goals
-
-Create a fully functional MCP server that integrates with the Warpcast API
-Enable AI assistants to post, read, and search casts
-Provide channel discovery and management capabilities
-Ensure secure authentication and API token handling
-Implement proper error handling and user feedback
-Follow MCP best practices for server implementation
-
-1.3 Target Users
-
-Users of Claude Desktop who want to interact with Warpcast
-Developers looking to extend Claude's capabilities with Warpcast integration
-Warpcast community members seeking AI assistance with platform interactions
-
-2. Technical Specifications
-2.1 Technology Stack
-
-Python 3.9+: Primary development language
-MCP Python SDK (v1.5.0+): Core framework for implementing the MCP server
-FastMCP: Streamlined server implementation from the MCP Python SDK
-FastAPI: For any additional HTTP endpoints if needed
-HTTP client library: For Warpcast API interactions (httpx recommended)
-Environment variable management: For secure API token handling
-
-2.2 Architecture Overview
-The server will follow the standard MCP architecture with:
-
-MCP Server Layer: Implements MCP protocol handling
-Tools Layer: Defines and implements Warpcast functionality
-API Integration Layer: Handles communication with Warpcast API
-Authentication Layer: Manages API tokens and authentication
-Error Handling Layer: Provides graceful error recovery and user feedback
-
-2.3 Dependencies
-
-mcp>=1.5.0: The official MCP Python SDK
-httpx: For making HTTP requests to the Warpcast API
-python-dotenv: For loading environment variables
-pydantic: For data validation and settings management
-
-3. Functional Requirements
-3.1 MCP Server Setup
-
-FastMCP Implementation: Use the FastMCP class from the MCP Python SDK
-Transport Configuration: Support both stdio and HTTP/SSE transports
-Initialization: Proper server initialization with name and version
-Environment Variables: Load API tokens securely from environment variables
-Transport Options: Command-line arguments to select transport type
-
-3.2 Tool Implementations
-3.2.1 Cast Management Tools
-
-post-cast
-
-Accept cast text (max 320 characters)
-Optional parent cast ID for replies
-Return success confirmation with cast URL
 
 
-get-user-casts
+# Warpcast MCP Server – Product Requirements Document
 
-Accept username parameter
-Retrieve recent casts from specified user
-Format and return cast information
+## Overview
 
+The **Warpcast MCP Server** is a Model Context Protocol (MCP) server that integrates with Farcaster’s Warpcast social platform, allowing an LLM (like Anthropic’s Claude) to interact with the user’s Warpcast account. Using the official **MCP Python SDK**, this server exposes Warpcast functionality (posting and reading “casts”, searching content, managing channels, etc.) to the LLM in a standardized way. Essentially, it functions like a web API designed for LLM interactions, enabling Claude to fulfill commands such as *“Post a cast about **X**”* or *“Show me the latest casts from **@user**”*. All implementation must strictly follow the MCP specification and Python SDK guidelines to ensure full protocol compliance. The server will communicate with Warpcast’s **official API** endpoints for all operations, using the user’s Warpcast API token for authorized requests.
 
-search-casts
+**Goals and Key Requirements:**
 
-Accept search query parameter
-Perform search via Warpcast API
-Return formatted search results
+* **Use of MCP SDK:** The server **must** be built on the official **Model Context Protocol Python SDK** (FastMCP), adhering to its recommended patterns and interfaces. This guarantees that any MCP-compatible client can connect to the server’s `/mcp` endpoint and use its functions seamlessly.
+* **Warpcast API Integration:** The server will interface with Warpcast’s v2 REST API for all data and actions, ensuring up-to-date compatibility with Warpcast’s endpoints and data formats. (For example, posting a cast will call Warpcast’s `POST /casts` HTTP endpoint.) The implementation should follow Warpcast’s API docs for correct endpoint paths, query parameters, and authentication usage.
+* **LLM Functionality:** Provide Claude (or other MCP clients) with a robust set of **tools** to perform common Warpcast tasks on behalf of the user. These include posting content, reading/searching casts, browsing channels, and managing follows. The LLM should be able to invoke these tools to satisfy user requests in natural language.
+* **Security & Configurability:** Protect user credentials by requiring an environment-provided Warpcast API token (no hard-coding). Do not expose sensitive info in logs or errors. The server will run locally (by default) and listen on a configured port (e.g. 8000) for MCP requests, with the token supplied via environment variable `WARPCAST_API_TOKEN`.
+* **Error Handling & Reliability:** The server should handle error cases gracefully – including missing/invalid tokens, Warpcast API errors, or invalid inputs – returning clear error messages or codes to the client without crashing. Logging should capture failures for debugging while preserving stability.
+* **MCP Compliance:** All components (tools, resources, prompts if any) must conform to MCP protocol rules. Follow naming conventions, request/response structures, and usage of the SDK’s decorators and classes as documented. This ensures the server is **fully MCP-compliant** and readily discoverable by clients.
 
+## Features and Functional Requirements
 
-get-trending-casts
+The Warpcast MCP Server provides the following **tools** (MCP actions) to the LLM for Warpcast integration:
 
-Retrieve current trending casts
-Format and return trending cast information
+* **Post Cast:** Create a new post (“cast”) on the user’s Warpcast account. This tool accepts a text content (up to **320 characters** maximum) and calls Warpcast’s create-cast API endpoint. On success, it returns the posted cast’s details (e.g. unique ID, content, timestamp, etc.) as confirmation. If the text exceeds 320 chars or Warpcast rejects the post, an error is returned.
+* **Get User Casts:** Retrieve recent casts from a specified user’s feed. The tool takes a target **username** (the Farcaster handle or ID of the user) and an optional limit (number of casts, default \~20). It invokes the Warpcast `GET /users/{username}/casts` API to fetch that user’s latest posts. The response (a JSON list of cast objects) is returned for the LLM to present or analyze.
+* **Search Casts:** Search Warpcast for casts containing a given keyword or phrase. This tool accepts a query string (and optional result limit) and uses the Warpcast search API (`GET /casts/search?q=<query>`). It returns matching casts or an empty list if no results. The LLM can use this to find content by hashtags, topics, or keywords.
+* **Get Trending Casts:** Retrieve the currently trending casts on Warpcast. The server calls the Warpcast trending feed endpoint (`GET /casts/trending`) to get a list of popular or trending cast content. An optional limit can restrict how many trending items to fetch (default 20). Returns a JSON list of trending cast entries (with their content, authors, etc.).
+* **Get All Channels:** List all available Warpcast channels. This tool hits the `GET /channels` endpoint to fetch the catalog of channels (which may include public rooms, topics, or groups in Warpcast). It returns an array of channel objects, each typically including an **id**, name, and description. Claude can use this to let the user browse channel options.
+* **Get Channel Info:** Fetch details about a specific channel by ID. Calls `GET /channels/{channel_id}` to retrieve the channel’s metadata (name, description, member count, etc.). Returns the channel object or an error if not found. This helps the LLM describe a channel to the user or verify it before other actions.
+* **Get Channel Casts:** Retrieve recent casts from a specific channel. Calls the Warpcast API at `GET /channels/{channel_id}/casts` (with an optional limit for number of posts) to get the latest content in that channel. Returns a list of cast objects from the channel’s feed.
+* **Follow Channel:** Follow (subscribe to) a channel on behalf of the user. This tool takes a **channel\_id** for the channel to follow and calls the `POST /channels/{id}/follow` Warpcast endpoint. On success, it returns a confirmation (e.g. status or the channel followed); on failure (e.g. already following or invalid channel), it returns an error message.
+* **Unfollow Channel:** Unsubscribe from a channel. Accepts a **channel\_id** and calls `POST /channels/{id}/unfollow` to remove the user’s follow. Returns success confirmation or error as appropriate (for example, error if the user wasn’t following the channel to begin with).
 
+Each of the above functionalities will be implemented as an MCP **Tool** (no persistent side-effects on the MCP server itself beyond invoking Warpcast). For read-only operations (getting casts or channels), the implementation is essentially a pass-through to Warpcast’s GET APIs. For state-changing operations (posting or follow/unfollow), the server ensures the action is executed via Warpcast and reports the outcome. All tools should be named and described clearly so the LLM knows when to use them. (The tool names in code use kebab-case like `post-cast`, `search-casts`, etc., which the SDK will expose to clients.)
 
+**Parameter Details:** Each tool defines the inputs it needs, using clear parameter names or request models:
 
-3.2.2 Channel Management Tools
+* *Post Cast:* requires a `text` string (the content to post).
+* *User Casts/Search/Trending/Channel Casts:* accept a string query or ID and an optional integer `limit` for number of results (defaults to 20).
+* *Channel Info:* requires a `channel_id` string (or numeric ID) to identify the channel.
+* *Follow/Unfollow Channel:* require a `channel_id` (provided in a JSON body or request object, since these are POST actions).
 
-get-all-channels
+The server will use **Pydantic** data models to validate complex inputs (e.g. defining a model with a `text` field for posting, or a `channel_id` field for follow/unfollow) and Python type hints for simple parameters. This ensures that if the LLM provides incorrectly formatted inputs, the server will reject the request with a validation error automatically (HTTP 422 response, handled by the framework).
 
-Retrieve list of available channels
-Format and return channel information
+## Architecture and Components
 
+**MCP Server Core (FastMCP):** The server is built atop the **FastMCP** framework provided by the MCP Python SDK. We instantiate a FastMCP server object to manage all MCP protocol handling, connection routing, and compliance details. For example, the code will do something like:
 
-get-channel
+```python
+from mcp.server.fastmcp import FastMCP  
+mcp = FastMCP("Warpcast MCP Server")  
+app = mcp.streamable_http_app()  # ASGI app exposing /mcp endpoint
+```
 
-Accept channel name parameter
-Retrieve detailed channel information
-Return formatted channel data
+This creates a named MCP server and obtains an ASGI-compatible application bound to the MCP endpoint. The server name (“Warpcast MCP Server”) is used for identification, and by default the MCP endpoint will be mounted at `/mcp` on the local web server (as required by the MCP spec and Claude’s expectations). We will ensure the MCP server object is globally accessible (commonly as `mcp`) so that MCP tooling (e.g. the CLI or Claude Desktop launcher) can discover it automatically in the module. All tool functions will be registered to this `mcp` server instance via the SDK’s decorator interface.
 
+**Tool Definitions:** Each feature is implemented as a Python async function decorated with `@mcp.tool()`. The function names (or an explicit name given in the decorator) correspond to the tool identifiers that the MCP protocol exposes. For consistency with MCP conventions, tool names will be in lowercase and use hyphens if needed (the SDK will convert function names like `post_cast` into `"post-cast"` when registering the tool). The functions will contain the logic to call Warpcast’s API and return results. For example:
 
-get-channel-casts
+```python
+@mcp.tool()  
+async def post_cast(req: CastRequest) -> dict:  
+    ensure_token()  
+    result = await warpcast_api.post_cast(req.text)  
+    if result.get("status") == "error":  
+        raise HTTPException(status_code=400, detail=result["message"])  
+    return result
+```
 
-Accept channel name parameter
-Retrieve recent casts from specified channel
-Format and return channel casts
+In the above pattern, a tool for posting is defined to accept a `CastRequest` (Pydantic model with a `text` field). We call a helper `ensure_token()` to verify configuration, then delegate to a Warpcast API client function. On error, we raise an HTTP 400 so that the MCP client knows the action failed; on success, we return the result (likely a JSON dict). All other tools follow a similar structure: validate input, call the appropriate Warpcast API wrapper, and return the response. Many read-only tools can simply return the JSON data from Warpcast directly without additional processing. We prefer **async/await** for all tool functions because the Warpcast API calls are I/O-bound; using asynchronous calls (via an HTTP client library) allows the server to handle multiple requests concurrently and efficiently.
 
+**Warpcast API Client Module:** A dedicated module (e.g. `warpcast_api.py`) will encapsulate the low-level integration with Warpcast’s HTTP endpoints. This module uses an HTTP client (such as **httpx**) to perform REST calls. Key aspects of this component:
 
-follow-channel
+* It defines the base URL for Warpcast API (e.g. `https://api.warpcast.com/v2`) and constructs endpoint URLs for each function. For instance, `post_cast(text)` will target `POST /casts`, `get_user_casts(username)` targets `GET /users/{username}/casts`, and so on for search, trending, channels, follow/unfollow. These functions are asynchronous and return the parsed JSON responses (or error indicators) from Warpcast.
+* It handles **authentication** by injecting the required **Bearer token** header on each request. The Warpcast API token (provided by the user) is read from the environment (`WARPCAST_API_TOKEN`) at runtime. For example, the client will set an Authorization header like `Bearer <token>` on all requests. If no token is present, calls to protected endpoints will likely fail with 401; the server’s logic will catch this scenario (described in error handling).
+* Timeout and exceptions: The HTTP client calls will have a reasonable timeout (e.g. 10 seconds) to avoid hanging. If a request fails due to network issues or a non-2xx HTTP status, the client functions will catch the exception (`httpx.HTTPError`) and return a structured error result (for example, returning a dict like `{"status": "error", "message": "Could not fetch ..."}` rather than throwing immediately). This allows the tool functions to decide how to propagate the error (often converting it to an MCP-friendly error message or exception).
 
-Accept channel name parameter
-Initiate channel follow operation
-Return success confirmation
+By abstracting Warpcast calls into this module, we isolate external API logic (endpoints, query params, payload formats) from the MCP interface. This makes maintenance easier if Warpcast’s API changes or if we need to add new endpoints. It also centralizes where the **API token** is managed (e.g. one function to check token presence) and where HTTP errors are initially caught/logged. We will use Python’s logging within this module to record any exceptions (with context) for debugging, but ensuring not to log sensitive data like the token or full responses in normal operation.
 
+**Data Models and Types:** We will use **Pydantic** (which comes with FastAPI) to define input schemas for tools that require structured data. Specifically: a `CastRequest` model with a `text: str` field for posting, and a `ChannelRequest` model with `channel_id: str` for follow/unfollow operations. These models enforce that the necessary fields are provided by the client (Claude) in the request JSON. Simpler tools that only need primitive types (e.g. `username: str`, `limit: int`) can rely on function signature type hints – FastAPI will treat them as query parameters or simple fields automatically. The return types for all tools will typically be Python dicts (which FastAPI will serialize to JSON), or possibly primitives in some cases (e.g. returning an `int` or `str` for a simplified result). By adhering to these data models, the server ensures input/output consistency and reduces the chance of runtime errors due to malformed data (the MCP framework will reject invalid calls with proper error messages).
 
-unfollow-channel
+**Configuration & Environment:** The server will be configured via environment variables for any secrets or deployment-specific values. Chiefly, the **Warpcast API token** must be provided as `WARPCAST_API_TOKEN` in the environment before server startup. On startup, the server will verify the token is present (and log a warning if not). Other configurable parameters might include the host/port to run on (default could be 0.0.0.0:8000 as per FastAPI default), and a debug flag for exception propagation (see Error Handling). These could be set via env or command-line as needed. The server will **not** store any persistent data or require a database – it’s stateless, relying solely on Warpcast’s API for data.
 
-Accept channel name parameter
-Initiate channel unfollow operation
-Return success confirmation
+**Logging and Monitoring:** The implementation will include logging at appropriate levels. Using Python’s `logging` library, we’ll log important events: startup messages, warnings if token missing, errors when API calls fail, etc. Successful operations can be logged at INFO level (or not at all) depending on verbosity needs. For debugging, a developer can enable more verbose logs or even an environment flag to propagate exceptions (see below). We will avoid logging sensitive info (the token or personal content of casts) in normal logs – focusing on statuses and error descriptions. This ensures user privacy and security. If desired, we could integrate simple metrics (like count of calls to each tool or latency of API calls) via log statements or future extensions, but that’s optional.
 
+**Testing:** Though not a user-facing component, it is required that the development includes a comprehensive test suite for the server’s functionality. Each tool should have unit tests simulating success and failure scenarios (with the Warpcast API calls stubbed). For example, tests will verify that `post_cast` returns a success dict when the API client reports success, and that it raises an HTTP 500 if the token is missing. Similarly, tests for read operations ensure the JSON data flows through correctly. By following the MCP SDK’s design (which supports dependency injection or stubbing), we can test our tool functions in isolation from the actual external API. Automated tests will help guarantee that the server meets the requirements and continues to do so after any changes.
 
+## Integration Flow (MCP Client Interaction)
 
-3.3 Warpcast API Integration
+This section describes how the Warpcast MCP Server will interact with an MCP client (such as Claude’s desktop app) and with the Warpcast backend in a typical usage scenario. The flow below illustrates the end-to-end integration:
 
-API Authentication: Use API token for authentication
-Endpoint Implementation: Map MCP tools to corresponding Warpcast API endpoints
-Rate Limiting: Respect Warpcast API rate limits
-Error Handling: Properly handle API errors and timeouts
+1. **Client Initiation:** The user (human) issues a request via the LLM client, e.g. *“Post a cast about **climate change**.”* The Claude desktop application (configured with the Warpcast MCP server) recognizes this as an action involving the Warpcast server. Claude (the LLM agent) decides to invoke the appropriate tool – in this case, the `post-cast` tool exposed by our MCP server.
+2. **MCP Request:** The Claude app sends an HTTP request to the Warpcast MCP Server’s endpoint (e.g. `http://localhost:8000/mcp`) specifying the `post-cast` tool and including the necessary parameter (the text content "climate change" in the request body). The MCP Python SDK on the server side receives this call, routes it to the `post_cast` function we defined, and parses the input through the `CastRequest` model.
+3. **Server Processing:** Our `post_cast` tool handler runs. It first calls `ensure_token()` to confirm the server is configured with an API token; if the token is missing, it will immediately return an error (HTTP 500) without proceeding. Assuming the token is set, the handler invokes the Warpcast API client: `warpcast_api.post_cast("climate change")`. This triggers an HTTP POST request from the server to Warpcast’s `POST /casts` endpoint, with the authorization header and JSON payload containing the text.
+4. **Warpcast API Call:** The Warpcast backend processes the request. If the token is valid and the content meets requirements, it creates a new cast under the user’s account. The Warpcast API responds with a JSON object representing the newly created cast (including fields like cast ID, text, author, timestamp, etc.). If there is an error (e.g. token invalid, text too long, duplicate content, server issue), Warpcast returns an error status (such as HTTP 400 or 401) and possibly a message.
+5. **Response Handling:** The Warpcast MCP server receives the HTTP response. The `warpcast_api` module either returns the parsed JSON on success or, if an HTTP error occurred, catches it and returns a dict like `{"status":"error","message":"Could not post cast"}`. In our tool function, we inspect this result – if it contains an `"error"` status, we raise an HTTPException (with status 400 and the error message) to indicate the tool invocation failed. On success, we simply return the JSON data. The FastMCP framework wraps this into a proper MCP response that goes back to the client over HTTP.
+6. **Client Reception:** Claude’s MCP client receives the result of the tool call. If it was an error, Claude will realize the action didn’t succeed and can convey or handle that (e.g. telling the user *“Sorry, I couldn’t post the cast due to ...”*). If it was successful, Claude now has the details of the posted cast. The LLM can then incorporate that information into its reply to the user, for example: *“Your cast has been posted! (Content: ‘climate change’)”*, possibly using the returned data if needed (like confirming the content or link). This entire loop happens seamlessly within a few seconds.
 
-3.4 Authentication & Security
+Similar flows occur for the other tools: for instance, if the user asks *“What are the trending casts right now?”*, Claude will call the `get-trending-casts` tool. The server will fetch trending casts from Warpcast, return the list, and Claude will present them in a readable format to the user. In multi-step scenarios, Claude might chain tool calls: e.g. to **follow a channel by name**, Claude could first call `get-all-channels` to get the list of channels and find the ID of the named channel, then call `follow-channel` with that ID. The server facilitates this by providing all the necessary primitives (list channels, get channel info, follow/unfollow).
 
-API Token Management: Store and use Warpcast API token securely
-Input Validation: Validate all user inputs before sending to API
-Error Messages: Ensure error messages don't expose sensitive information
+**Claude Desktop Integration:** To integrate the server with Claude’s desktop app, developers must ensure the server can be started and reachable at a known URL. Typically, Claude Desktop will launch the server as configured in `claude_desktop_config.json` with something like:
 
-4. Implementation Details
-4.1 Project Structure
-mcp-warpcast-server/
-├── README.md               # Project documentation
-├── LICENSE                 # MIT License file
-├── .gitignore              # Git ignore file
-├── .env.example            # Example environment variables
-├── requirements.txt        # Python dependencies
-├── setup.py                # Package setup file
-├── warpcast_server/
-│   ├── __init__.py         # Package initialization
-│   ├── config.py           # Configuration management
-│   ├── server.py           # MCP server implementation
-│   ├── api.py              # Warpcast API client
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── cast_tools.py   # Cast-related tools
-│   │   └── channel_tools.py # Channel-related tools
-│   └── utils/
-│       ├── __init__.py
-│       ├── formatters.py   # Response formatting utilities
-│       └── validators.py   # Input validation utilities
-└── tests/                  # Test directory
-    ├── __init__.py
-    ├── test_server.py      # Server tests
-    ├── test_api.py         # API integration tests
-    ├── test_cast_tools.py  # Cast tools tests
-    └── test_channel_tools.py # Channel tools tests
-4.2 MCP Server Implementation
-The server implementation should use the FastMCP approach from the MCP Python SDK:
-pythonfrom mcp.server.fastmcp import FastMCP
-
-mcp = FastMCP("warpcast-server", version="1.0.0")
-4.3 Tool Implementation Pattern
-Each tool should follow this implementation pattern:
-python@mcp.tool()
-async def post_cast(text: str, parent_cast_id: str = None) -> str:
-    """Post a new cast to Warpcast.
-    
-    Args:
-        text: The content of the cast (max 320 characters)
-        parent_cast_id: Optional ID of a parent cast (for replies)
-    
-    Returns:
-        Confirmation message with cast URL
-    """
-    # Input validation
-    if len(text) > 320:
-        return "Error: Cast text exceeds 320 character limit"
-    
-    # API call
-    try:
-        response = await api_client.post_cast(text, parent_cast_id)
-        cast_url = response.get("url", "")
-        return f"Cast posted successfully! View at: {cast_url}"
-    except Exception as e:
-        return f"Error posting cast: {str(e)}"
-4.4 Warpcast API Integration
-The Warpcast API client should be implemented as a class with methods corresponding to the required API actions:
-pythonclass WarpcastAPI:
-    def __init__(self, api_token):
-        self.api_token = api_token
-        self.base_url = "https://api.warpcast.com/v2"
-        self.headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_token}"
-        }
-        self.client = httpx.AsyncClient(headers=self.headers)
-    
-    async def post_cast(self, text, parent_cast_id=None):
-        """Post a new cast to Warpcast."""
-        endpoint = f"{self.base_url}/casts"
-        data = {"text": text}
-        if parent_cast_id:
-            data["parent"] = parent_cast_id
-        
-        response = await self.client.post(endpoint, json=data)
-        response.raise_for_status()
-        return response.json()
-    
-    # Additional API methods for other operations
-4.5 Authentication & Configuration
-Use environment variables for secure configuration:
-pythonimport os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-WARPCAST_API_TOKEN = os.getenv("WARPCAST_API_TOKEN")
-if not WARPCAST_API_TOKEN:
-    raise ValueError("WARPCAST_API_TOKEN environment variable is required")
-
-api_client = WarpcastAPI(WARPCAST_API_TOKEN)
-4.6 Server Startup
-Implement a main function that supports both stdio and HTTP transports:
-pythonimport argparse
-
-def main():
-    parser = argparse.ArgumentParser(description="Warpcast MCP Server")
-    parser.add_argument("--http", action="store_true", help="Run with HTTP transport")
-    parser.add_argument("--port", type=int, default=8000, help="HTTP port (default: 8000)")
-    args = parser.parse_args()
-    
-    if args.http:
-        # For HTTP transport
-        mcp.run_http(host="0.0.0.0", port=args.port)
-    else:
-        # For stdio transport
-        mcp.run(transport="stdio")
-
-if __name__ == "__main__":
-    main()
-5. Testing Requirements
-5.1 Unit Tests
-
-Test individual tool functions with mocked API responses
-Validate input validation and error handling
-Ensure proper formatting of responses
-
-5.2 Integration Tests
-
-Test end-to-end functionality with test Warpcast account
-Verify API integration working correctly
-Test error cases and edge conditions
-
-5.3 MCP Protocol Compliance
-
-Test compatibility with Claude Desktop
-Verify tool discovery and execution
-Test both stdio and HTTP transport modes
-
-6. Deployment & Usage
-6.1 Package Distribution
-
-Package as a Python module for pip installation
-Provide Docker container option for easy deployment
-Include clear installation instructions
-
-6.2 Claude Desktop Integration
-Configuration for Claude Desktop:
-json{
-  "mcpServers": {
-    "warpcast": {
-      "command": "python",
-      "args": [
-        "-m",
-        "warpcast_server"
-      ],
-      "env": {
-        "WARPCAST_API_TOKEN": "YOUR_API_TOKEN"
-      }
-    }
+```json
+"mcpServers": {
+  "warpcast": {
+    "command": "", 
+    "args": ["", "/ABSOLUTE/PATH/TO/mcp-warpcast-server", ""],
+    "url": "http://localhost:8000/mcp",
+    "env": { "WARPCAST_API_TOKEN": "YOUR_API_TOKEN" }
   }
 }
-6.3 Alternative HTTP Integration
-For HTTP transport deployment:
-json{
-  "mcpServers": {
-    "warpcast": {
-      "url": "http://localhost:8000/mcp",
-      "env": {
-        "WARPCAST_API_TOKEN": "YOUR_API_TOKEN"
-      }
-    }
-  }
-}
-7. API Reference
-7.1 Warpcast API Endpoints Used
-The implementation should use these Warpcast API endpoints:
+```
 
-POST /v2/casts: Create a new cast
-GET /v2/user-casts: Get casts by user
-GET /v2/search-casts: Search for casts
-GET /v2/trending-casts: Get trending casts
-GET /v2/all-channels: List all channels
-GET /v2/channel: Get channel details
-GET /v2/channel-casts: Get casts from a channel
-POST /v2/channel-action: Follow/unfollow channel
+In this setup, Claude knows to start the server (via the provided path/command) and communicate with it at the given URL. Our implementation must conform to this expectation: it should run a web server on localhost port 8000 serving the MCP endpoint at `/mcp`, and read the `WARPCAST_API_TOKEN` from environment on launch. Following the official MCP SDK instructions for **Claude Desktop Integration** ensures that once the server is running, the Claude UI will show a “Warpcast” tool icon, and user prompts can trigger the corresponding actions. The developers should test the server with the **MCP Inspector** tool (`fastmcp dev`) during development, and then with the actual Claude app to verify the end-to-end flow. The MCP Inspector can simulate client calls and help ensure that the server’s tools are registered and working as intended before integrating with the real LLM.
 
-7.2 MCP Tool Schemas
-Each tool should have a proper JSON schema defining its parameters, for example:
-pythonpost_cast_schema = {
-    "type": "object",
-    "properties": {
-        "text": {
-            "type": "string",
-            "description": "The content of the cast (max 320 characters)"
-        },
-        "parent_cast_id": {
-            "type": "string",
-            "description": "Optional ID of a parent cast (for replies)"
-        }
-    },
-    "required": ["text"]
-}
-8. Error Handling
-8.1 Error Categories
-The server should handle these error categories:
+## Data Formats and API Usage
 
-Input Validation Errors: Invalid parameters or constraints
-API Errors: Errors from Warpcast API
-Authentication Errors: Missing or invalid API token
-Network Errors: Connection issues with Warpcast API
-Rate Limiting: Handling API rate limits
+The Warpcast MCP Server primarily exchanges data in **JSON format** (over HTTP) as per MCP standards. Key aspects of the data contract include:
 
-8.2 Error Response Format
-All errors should be formatted consistently:
-pythondef format_error(error_type, message, details=None):
-    """Format error messages consistently."""
-    response = f"Error ({error_type}): {message}"
-    if details:
-        response += f"\nDetails: {details}"
-    return response
-9. Documentation
-9.1 README Requirements
-The README should include:
+* **Request Input Format:** MCP tool calls are invoked via HTTP (usually POST requests to the MCP endpoint) carrying JSON data for parameters when needed. For example, a `post-cast` call will include a JSON body like `{"text": "hello world"}` which maps to our `CastRequest` model. Simpler parameters (like query strings for search) might be passed as query params in the request URL (e.g. `GET /mcp/tools/search-casts?q=hello` if the MCP protocol uses a RESTful style) – the FastAPI integration will parse those into function arguments (string and int types). The MCP Python SDK abstracts some of this, but from a developer perspective we ensure that each tool function can accept the correct input either via body or query. **Important:** We follow the official SDK’s approach to parameter binding, so the data format is exactly as expected by MCP clients (the SDK likely serializes function arguments to JSON under the hood if not using a direct HTTP GET). Using Pydantic models means the client must send a JSON object with the specified fields for those tools; using primitive args means they can be query parameters or part of a structured call. All parameter names and types should match those in the documentation and code, to avoid confusion (e.g. use `username` exactly for the user handle, `channel_id` for channel identifier, etc.).
 
-Project overview and purpose
-Features list
-Installation instructions
-Usage examples
-Available tools description
-Configuration guide for Claude Desktop
-Troubleshooting tips
-License information
+* **Warpcast API Payloads:** When the server calls Warpcast’s API, it constructs requests as per Warpcast’s requirements:
 
-9.2 Code Documentation
+  * For **posting a cast**, a JSON payload `{"text": "<content>"}` is sent in the body of `POST /casts`.
+  * For **follow/unfollow**, the API expects a POST with no body (just the auth header), which our client will handle by simply calling the endpoint with an empty JSON or no payload (httpx allows `client.post(url, headers=...)` with no body).
+  * For **search and listing** calls, parameters like query or limit are included in the URL query string (e.g. `?q=term&limit=20` for search, already formatted in our client function).
+  * These details are internal to the integration module, but important for correctness: the server should ensure it formats requests exactly as the Warpcast API expects (including any required query param names, path segments, or JSON fields). We rely on Warpcast’s API documentation (e.g. Warpcast docs might specify field names and response schema) to implement this correctly.
 
-All functions should have proper docstrings
-Include type hints for function parameters and return values
-Document expected API responses and error handling
-Add comments for complex logic
+* **Response Output Format:** The server’s responses to the MCP client will be JSON data structures representing the outcome of the tool call. On success, these are typically direct pass-throughs of Warpcast’s response JSON. For instance:
+
+  * A successful **post-cast** might return a JSON object like `{"result": { "cast": { "hash": "abcd1234", "text": "hello world", ... } }}` (exact schema depends on Warpcast API). In our implementation, since we do `return response.json()`, whatever JSON Warpcast returns will be forwarded. Developers should familiarize themselves with the Warpcast API response format (from docs) to know what fields are included (e.g. cast objects likely contain an `id` or `hash`, the text, author info, timestamps, etc.). We do not intend to transform or truncate this data – the LLM can parse it or selectively use it as needed.
+  * A **get-user-casts** success returns something like `{"casts": [ {...}, {...}, ... ], "cursor": "XYZ"}`, etc., where `"casts"` is a list of cast objects. Similarly, **search-casts** might return `{"results": [ {...} ], "nextPageToken": ...}` or similar. **Trending casts** likely come as `{"casts": [ ... ]}` or a variant; **channels** might be `{"channels": [ {...} ]}`. In our tests, we assumed keys like `"casts"` or `"results"`, but the actual keys will match Warpcast’s API (we’ll verify from documentation).
+  * For **follow/unfollow**, Warpcast might return a simple status (perhaps the followed channel object or just a success flag). In our stub we used `{"status": "success", "channel": "<id>"}` to simulate; the real API might return the updated channel or a 204 No Content. Our server currently expects a JSON; if Warpcast returns empty, our client functions currently always return a JSON (even if just status), so we might wrap a success message accordingly. This should be clarified with actual docs – but at minimum, the server will respond with a JSON indicating success so the LLM knows the action is done.
+
+* **Error Response Format:** On failure cases, the server will return errors in a consistent JSON format or HTTP status code:
+
+  * For anticipated errors (like missing token or an invalid request), we raise an HTTPException within FastAPI. This results in an HTTP error response to the client, typically with a JSON body like `{"detail": "Server misconfigured: WARPCAST_API_TOKEN not set"}` (for a 500 error) or `{"detail": "Could not post cast"}` (for a 400 error on post failure). The MCP client will recognize the non-200 HTTP status and handle accordingly. The **detail** field contains the error message. We use 400 for errors in performing the action (bad input, API returned error) and 500 for server-side misconfiguration issues.
+  * In cases where we choose not to raise an HTTP exception, we may instead return a JSON object with an `"status": "error"` field (as our Warpcast API module does). For example, if a `search_casts` call fails, our `warpcast_api.search_casts` might return `{"status":"error","message":"Could not search casts"}`. If our tool function doesn’t intercept that, it will send this JSON with a 200 OK response (because we didn’t raise). The client (LLM) would then need to interpret that the result has a status error. This approach is somewhat inconsistent (mixing HTTP errors and JSON error flags). As a requirement, we should standardize error handling: ideally, for any operation failure, **either** raise an HTTP error or always return a JSON with status "error". To align with MCP best practices and clarity, we will:
+
+    * Use HTTP error responses for critical failures or misconfiguration (so that it’s obvious to the client that something went wrong).
+    * For Warpcast API errors (like a 4xx from Warpcast), prefer to propagate a clear message back. For consistency, we might convert these to HTTP 400 with the message. In our implementation, some tools do this (post, follow/unfollow raise HTTP 400 on error), while others simply return the error JSON. We will adjust if needed so that all tool failures yield a recognizable error signal. This can be refined during development – the key is that the developer ensures the LLM is informed of the failure in an actionable way.
+  * **Error messages:** Wherever possible, include informative yet safe error messages. For example, if the Warpcast API returns a specific error (like "text too long" or "unauthorized"), it’s better to forward that message rather than a generic "Could not perform action". We will attempt to capture specific error info. Our current design catches exceptions broadly and uses generic messages; improving this (e.g. reading `response.json()` for an error field) is desirable so the user/LLM knows the reason. At minimum, our messages differentiate the action (post vs fetch vs follow). Developers should consult Warpcast API docs for error response structure (they might provide an error code or message in the JSON) and incorporate those into the server’s error handling.
+
+* **Data Examples:** For clarity, here are a couple of example inputs and outputs:
+
+  * *Posting a Cast:* **Input:** `{"text": "Hello Farcaster!"}` -> **Output:** `{"result": {"cast": {"hash": "abcd1234", "text": "Hello Farcaster!", "author": {...}, "timestamp": 1690000000, ...} }}` (plus other metadata as Warpcast defines).
+  * *Searching Casts:* **Input:** (via query param) `?q=ethereum&limit=5` -> **Output:** `{"casts": [ {...}, {...}, ... ], "next": "TOKEN" }` – a list of up to 5 casts mentioning "ethereum".
+  * *Follow Channel:* **Input:** `{"channel_id": "1234"}` -> **Output (success):** `{"status": "success", "channel": "1234"}` or possibly `{"channel": {...}}`. **Output (error):** HTTP 400 with body `{"detail": "Could not follow channel"}` if, say, the channel ID was invalid.
+
+These examples are illustrative; actual field names will align with Warpcast’s API. The developer should verify actual responses by testing with a real token. The MCP server should not overly modify the data – just pass it through to the LLM, since the LLM is capable of reading JSON and extracting the needed info to respond to the user. If formatting is needed (for example, converting timestamps to human-readable dates), it could be done either in the LLM layer or we could add optional formatting in the future (not required in this PRD).
+
+## Error Handling and Robustness
+
+Robust error handling is critical for a good developer and user experience. The Warpcast MCP Server will implement the following error handling strategies:
+
+* **Missing API Token:** If the required `WARPCAST_API_TOKEN` environment variable is not set at startup, the server will log a clear warning message and **disable any requests that require authorization**. We implement a startup check (`on_event("startup")`) that calls `warpcast_api.has_token()`. If false, we log a warning like *"WARPCAST\_API\_TOKEN is not set. Requests requiring authorization will fail"*. Additionally, each tool function will invoke `ensure_token()` before calling Warpcast. `ensure_token()` will throw an HTTP 500 error with the message *"Server misconfigured: WARPCAST\_API\_TOKEN not set"* if no token is present. This guarantees that the LLM is immediately informed of the configuration issue (and can relay to the user to set up their token) rather than attempting calls that will certainly fail. The test suite will include a test for this scenario to ensure a 500 is raised if no token. (Note: Some tools like reading public data *could* work without a token if Warpcast allows it, but we will assume the token is needed for all endpoints to simplify logic, unless Warpcast docs say otherwise.)
+
+* **Warpcast API Errors (HTTP Failures):** When the server calls Warpcast, many things can go wrong – network issues, timeouts, or Warpcast returning an error status (e.g. 400 Bad Request, 401 Unauthorized, 404 Not Found, 500 Server Error). Our `warpcast_api` integration functions are wrapped in try/except to catch `httpx.HTTPError` which covers any non-2xx response or request exception. On catching such an error, the function will log the exception (including stack trace, suppressed in production if needed) and return a generic error dict like `{"status": "error", "message": "Could not <action>"}`. For example, if searching casts fails, it returns `{"status":"error","message":"Could not search casts"}`. This approach prevents unhandled exceptions from bubbling up and crashing the server – instead, the tool gets a safe error object. In the tool function, as discussed, we may choose to raise an HTTPException to propagate an HTTP error. We will standardize: for actions (post, follow/unfollow) we already raise 400 on error; we should do similarly for read operations for consistency (or at least ensure that the LLM recognizes the `"status": "error"` in the JSON). A 400 response indicates to the MCP client that the request was understood but could not be fulfilled, which is semantically correct for things like “user not found” or “invalid input”. If Warpcast returns a 401 (invalid token), our integration currently would log and return "Could not fetch...". We might improve this by detecting status codes: e.g., if response.status\_code == 401, return an error message that hints the token is invalid/expired. This is a development consideration to make debugging easier for the user. In summary, **all Warpcast call failures will be caught** and turned into a controlled error response. The server will **never crash** on an external API error; it will always respond to the MCP client either with success data or a well-formed error.
+
+* **Input Validation Errors:** As noted, using Pydantic models and type hints means that if the LLM (or user through it) supplies malformed input (missing required fields, wrong data type, etc.), the request will not reach our tool logic at all – FastAPI will intercept it. FastAPI/MCP will automatically send a 422 Unprocessable Entity response with details about which field is invalid. We don’t need to manually handle this in each function, but we should be aware of it. In the PRD context, the requirement is to **leverage the framework’s validation** to ensure inputs are correct. Developers should define models/params rigorously (e.g., if a field must be non-empty, perhaps add a min length constraint or at least document it). The resulting error message from FastAPI is a JSON with a `"detail"` key containing validation errors. This is acceptable as it tells the LLM exactly what was wrong (e.g. “field X is required”). We will treat these as client errors to be fixed, not something the server can resolve.
+
+* **Rate Limiting / Throttling:** Warpcast’s API might have rate limits (not explicitly known here). If the user or LLM triggers many requests (e.g., a loop of searching or a bulk channel follow), we should be mindful of hitting those limits. The server itself will not implement internal rate limiting initially, but we will handle a 429 Too Many Requests from Warpcast similarly to other errors – returning an error message like “Too many requests, slow down.” If needed, in the future we could add an internal debounce or rate-limit check to avoid spamming Warpcast (for instance, if the LLM enters a loop). For this PRD, it’s enough to note that **the server should not overload Warpcast**; use caching or minimal necessary calls where possible. (One example: if Claude asks for trending casts twice in a row, we might cache the first result for a short period. Caching is not required now, but developers can consider it if performance becomes an issue.)
+
+* **Timeouts and Retries:** Each Warpcast API call will have a timeout (10 seconds as default). If a call times out (no response in time), the integration returns an error as with other exceptions. We might consider a retry mechanism for transient failures (network glitch, etc.). A requirement could be: **the server should attempt at least one retry for transient errors (timeout or 5xx from Warpcast)** before giving up, to improve reliability. This isn’t implemented in the current code yet but is a good practice. In absence of that, the LLM could always try the action again if it receives an error. For now, documenting that the timeout is set and that a failure will be signaled is sufficient. We will not hang indefinitely on any request.
+
+* **Logging and Debugging:** On any error condition, the server should log relevant information to aid developers. For example, when a Warpcast call fails, we `logger.exception` which logs the stack trace and error cause. These logs (at ERROR level) help identify issues (like connectivity or bad data) during development and testing. In production use with Claude Desktop, these logs would go to the console or a log file for advanced users to inspect if something isn’t working. We also include a mechanism to **propagate exceptions in debug mode**: if an environment variable (e.g. `PROPAGATE_EXCEPTIONS`) is set, our integration functions will re-raise the exception instead of catching it. This is useful during development because the full traceback will bubble up and possibly appear in the client or terminal, making it easier to pinpoint issues. By default, this is off to avoid crashing the server for end users. The PRD requires that developers maintain this dual mode: a safe mode (catch errors) and a debug mode (propagate) for troubleshooting. Ensure this does not leak sensitive data (e.g., exception might include request URLs – those can have usernames or query terms, which is fine, but ensure no token in exception message).
+
+* **Graceful Degradation:** In the event of certain features not working (e.g., Warpcast changes an endpoint), the server should fail gracefully for that tool while others continue working. For instance, if the “trending casts” endpoint is deprecated and returns 404, the `get-trending-casts` tool would return an error for that request, but the server should still allow other tools like posting or searching to function normally. Isolation between tools (each in their own function) inherently provides this – one failing function doesn’t crash the whole server process. We just need to be sure not to use any global state that could be corrupted by an error. The FastMCP framework runs each tool call independently, so we meet this requirement by design.
+
+* **Security Considerations:** As part of error handling and overall design, some security points:
+
+  * Do not include the API token or any private user info in any response or error. Even if a debug log might capture something, never send it back to the client/LLM. The LLM and ultimately the user should never see their token or internal server paths, etc.
+  * Use HTTPS (Warpcast API is HTTPS) for all external calls to protect data in transit. The server itself runs on HTTP locally; since it’s local, that’s acceptable. If we did make it remote, we’d consider adding TLS.
+  * Only accept connections from authorized clients if possible. In a local setup, this is less an issue (Claude connects to localhost). If the server were hosted or left running, ensure it’s not openly accessible (maybe binding to localhost only, which FastAPI does by default). This prevents others from using the user’s token by hitting the MCP server endpoint.
+  * Validate inputs to avoid any injection issues. Since our inputs are mostly primitives (strings, ints) and maybe small JSON, the main risk could be if someone tried to craft a malicious string to exploit something. We rely on high-level libraries (httpx, FastAPI) which are robust, and we’re not executing any untrusted code beyond sending it to Warpcast. Just remain vigilant (for example, if someone tried to pass a huge string to `search_casts`, it might cause a heavy operation or log flooding – we could set a max length for certain inputs if needed to mitigate abuse, though likely not necessary in normal use).
+
+By fulfilling the above error handling and robustness requirements, we ensure the Warpcast MCP Server is reliable, secure, and developer-friendly. The server will **fail fast** on configuration errors, **gracefully handle external API problems**, and always inform the client (LLM) in a structured way. Logging and testing complete the picture, giving developers confidence in deploying and maintaining the server.
+
+## MCP Compliance and Compatibility
+
+This project must adhere 100% to the **Model Context Protocol** specifications and leverage the official SDK appropriately. Key compliance points include:
+
+* **Using the Official MCP Python SDK:** The implementation will not invent custom protocols or endpoints; it will use the SDK’s provided classes and methods to define the MCP server and its capabilities. FastMCP (now part of the MCP SDK) is our primary interface. By following the SDK documentation, we ensure that our server’s internal behavior (how it registers tools, how it formats responses, etc.) matches the MCP standard. The server is essentially a **standard MCP server** under the hood, just with custom tools for Warpcast. This means any MCP client (Claude, or others that may emerge) can connect to it without special-casing. We will keep the MCP server updated if the SDK updates – e.g., if the SDK introduces new decorators or required metadata, we incorporate those. The documentation **“What is MCP?”** and core concept explanations should be understood by developers to ensure we don’t violate any assumptions (for instance, understanding that Tools are intended for actions with side effects, which aligns with how we used them, and that if we ever expose static data, we could use Resources).
+
+* **Server Endpoint & Discovery:** MCP convention dictates the server should expose an endpoint (commonly `/mcp`) where the client can retrieve the server’s manifest (available tools, resources, etc.) and invoke them. Using `mcp.streamable_http_app()` sets up exactly this endpoint on our FastAPI app. We will not alter this path – it must remain `/mcp` to be compatible with Claude’s expectations. The server should listen on a consistent port (the example uses 8000) unless configured otherwise, and we document if that’s changeable. The **server object name** (`mcp`) and optionally the app object (`app`) are created as global variables as per SDK guidelines, so that running `fastmcp install` or `fastmcp dev` commands works without additional parameters. This is a subtle requirement: developers must ensure the main module (e.g. `main.py`) is structured such that these objects exist at import time.
+
+* **Tool Registration and Naming:** Thanks to the SDK, simply using the `@mcp.tool()` decorator registers the tool. We should double-check that the names come out as intended. Our test will ensure that all expected tool names are present in `mcp.tools` registry. If a different name is needed (perhaps to include a description or category), the SDK might allow `@mcp.tool(name="post-cast", description="...")`. We will use such options if available to make sure the tool metadata is informative. The PRD requires that each tool has a clear purpose and, if possible, a docstring or description accessible to the client (the SDK might expose those to the LLM as usage hints). We will include docstrings in our tool functions describing briefly what they do, as that could help the LLM or appear in an inspector interface.
+
+* **Prompt Templates (if applicable):** MCP also supports **Prompts** – reusable prompt templates that guide the LLM in using the server. In this server, we might not strictly need custom prompts because the use-cases are straightforward (the LLM can figure out when to call `post-cast` based on user input). However, for completeness, we could provide prompts if the MCP SDK recommends (e.g. an example prompt that shows how to format a search query or a reminder that casts have length limits). The PRD doesn’t list it as a must-have, but we mention it as part of MCP features. If we find in testing that the LLM misuses a tool, we might add a prompt to clarify usage. Any prompts would be defined with `@mcp.prompt()` decorators. This is optional – the main requirement is **the server should be able to integrate with Claude without additional prompts** (i.e., the built-in behavior of Claude plus the tool definitions should suffice).
+
+* **Compatibility with Warpcast API Versions:** We commit to using the official Warpcast API endpoints (v2 as of writing). If Warpcast updates their API (v3, changes endpoints), we will update our integration module accordingly, but the external behavior (tools and their purpose) remains the same. In other words, the MCP interface is stable from the client perspective, even if internally we adjust to new API versions. This PRD assumes Warpcast v2; developers should keep an eye on the Warpcast docs for any required changes (e.g., endpoint paths or JSON fields).
+
+* **Licensing and Attribution:** (Minor point, but since the README mentions MIT license, we ensure the code we write can be open-sourced or included under that license. Using the MCP SDK (which likely is open-source) and Warpcast API (which is public for authorized tokens) should pose no licensing issues. We will include the MIT license file and any necessary attribution per requirements of the SDK or other dependencies.)
+
+* **Documentation and Guides:** We will maintain clear documentation in the repository (e.g. a README or usage guide) so that other developers can understand how to run and use the server. The README already outlines usage and configuration; we will update it if needed to reflect any changes or additional steps. It should explicitly mention the need to set the `WARPCAST_API_TOKEN` and how to configure Claude to use the server (we have that snippet in the README). This PRD’s content can inform improvements to the README as well, ensuring the delivered project is self-explanatory for new developers.
+
+In conclusion, by following this Product Requirements Document, developers will build a **Warpcast MCP Server** that is feature-complete, stable, and compliant. The server will use the **MCP Python SDK** as mandated, implement all **Warpcast** interactions as per official API, and present a set of well-defined **tools** to any MCP-compatible client. Adhering closely to the official documentation and best practices ensures the server is **fully compatible with the Model Context Protocol** and easily integrated into the Claude ecosystem. Developers should continuously refer to the MCP SDK docs and Warpcast API reference throughout implementation to verify that all details (from function signatures to endpoint URLs) are correct. By delivering these requirements, the end product will enable users to seamlessly manage their Warpcast social content through natural language via Claude, with the MCP server acting as the reliable bridge between the AI and the Warpcast platform.
